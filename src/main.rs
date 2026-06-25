@@ -51,7 +51,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             "required": ["file_path"]
                         }
                     }
-                }]
+                }, {
+                        "type": "function",
+                        "function": {
+                            "name": "Write",
+                            "description": "Write content to a file.",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "file_path": {
+                                        "type": "string",
+                                        "description": "The path of the file to write to.",
+                                    },
+                                    "content": {
+                                        "type": "string",
+                                        "description": "The content to write to the file.",
+                                    }
+                                },
+                                "required": ["file_path", "content"]
+                            }
+                        }
+                    }]
             }))
             .await?;
 
@@ -67,14 +87,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let name = tool_call["function"]["name"].as_str().unwrap();
             let arguments: Value =
                 serde_json::from_str(tool_call["function"]["arguments"].as_str().unwrap())?;
-
-            if name != "Read" {
-                eprintln!("Unknown tool call: {}", name);
-                break;
-            }
-
-            let file_path = arguments["file_path"].as_str().unwrap();
-            let contents = std::fs::read_to_string(file_path)?;
+            let contents = execute_tool_call(name, arguments)?;
 
             messages
                 .push(json!({"role": "tool", "tool_call_id": tool_call_id,  "content": contents}));
@@ -85,4 +98,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+fn execute_tool_call(name: &str, arguments: Value) -> Result<String, Box<dyn std::error::Error>> {
+    match name {
+        "Read" => {
+            let file_path = arguments["file_path"].as_str().unwrap();
+            let contents = std::fs::read_to_string(file_path)?;
+            Ok(contents)
+        }
+        "Write" => {
+            let file_path = arguments["file_path"].as_str().unwrap();
+            let content = arguments["content"].as_str().unwrap();
+            std::fs::write(file_path, content)?;
+            Ok(format!("Successfully wrote to {}", file_path))
+        }
+        _ => Err(format!("Unknown tool call: {}", name).into()),
+    }
 }
