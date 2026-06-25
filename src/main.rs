@@ -71,6 +71,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 "required": ["file_path", "content"]
                             }
                         }
+                    },
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "Bash",
+                            "description": "Execute a shell command.",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "command": {
+                                        "type": "string",
+                                        "description": "The command to execute.",
+                                    }
+                                },
+                                "required": ["command"]
+                            }
+                        }
                     }]
             }))
             .await?;
@@ -112,6 +129,18 @@ fn execute_tool_call(name: &str, arguments: Value) -> Result<String, Box<dyn std
             let content = arguments["content"].as_str().unwrap();
             std::fs::write(file_path, content)?;
             Ok(format!("Successfully wrote to {}", file_path))
+        }
+        "Bash" => {
+            let command = arguments["command"].as_str().unwrap();
+            let output = std::process::Command::new("bash")
+                .arg("-c")
+                .arg(command)
+                .output()?;
+            Ok(format!(
+                "{}{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            ))
         }
         _ => Err(format!("Unknown tool call: {}", name).into()),
     }
