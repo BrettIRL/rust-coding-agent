@@ -1,35 +1,100 @@
-[![progress-banner](https://backend.codecrafters.io/progress/claude-code/45db633e-cd63-421e-8a36-197b1c7c9fed)](https://app.codecrafters.io/users/BrettIRL?r=2qF)
+# Rust Coding Agent
 
-This is a starting point for Rust solutions to the
-["Build Your own Claude Code" Challenge](https://codecrafters.io/challenges/claude-code).
+A small command-line coding agent written in Rust. It sends a prompt to an
+OpenAI-compatible chat completion API and lets the model inspect files, write
+files, and run shell commands until it returns a final response.
 
-Claude Code is an AI coding assistant that uses Large Language Models (LLMs) to
-understand code and perform actions through tool calls. In this challenge,
-you'll build your own Claude Code from scratch by implementing an LLM-powered
-coding assistant.
+## Warning
 
-Along the way you'll learn about HTTP RESTful APIs, OpenAI-compatible tool
-calling, agent loop, and how to integrate multiple tools into an AI assistant.
+This agent can overwrite files and execute arbitrary shell commands with the
+same permissions as the user who runs it. Tool calls are executed immediately,
+without confirmation or sandboxing. Run it only in an environment where you
+are comfortable granting that access, and review or commit important work
+beforehand.
 
-**Note**: If you're viewing this repo on GitHub, head over to
-[codecrafters.io](https://codecrafters.io) to try the challenge.
+## Features
 
-# Passing the first stage
+- Accepts a prompt through a command-line flag.
+- Uses OpenRouter by default with the `anthropic/claude-haiku-4.5` model.
+- Supports any OpenAI-compatible endpoint through `OPENROUTER_BASE_URL`.
+- Gives the model three tools:
+  - `Read` reads a UTF-8 text file.
+  - `Write` creates or replaces a file.
+  - `Bash` executes a command with `bash -c` and returns stdout and stderr.
+- Continues the model/tool loop until the model produces a text response.
 
-The entry point for your `claude-code` implementation is in `src/main.rs`. Study
-and uncomment the relevant code, and submit to pass the first stage:
+## Architecture
+
+The implementation lives in `src/main.rs` and has two main parts:
+
+1. `main` parses the prompt, configures the API client, declares the available
+   tools, and drives the agent loop.
+2. `execute_tool_call` dispatches model requests to the local filesystem or a
+   Bash subprocess and returns the result to the model.
+
+Conversation state is an in-memory list of chat messages. After each model
+response, the assistant message and any tool result are appended before the
+next API request.
+
+## Requirements
+
+- Rust 1.95 or newer
+- Bash
+- An OpenRouter API key, or credentials for another OpenAI-compatible endpoint
+
+## Setup
+
+Set the API key in your environment:
 
 ```sh
-codecrafters submit
+export OPENROUTER_API_KEY="your-api-key"
 ```
 
-# Stage 2 & beyond
+OpenRouter is the default endpoint. To use another compatible service, set its
+base URL as well:
 
-Note: This section is for stages 2 and beyond.
+```sh
+export OPENROUTER_BASE_URL="https://example.com/v1"
+```
 
-1. Ensure you have `cargo (1.95)` installed locally.
-2. Run `./your_program.sh` to run your program, which is implemented in
-   `src/main.rs`. This command compiles your Rust project, so it might be slow
-   the first time you run it. Subsequent runs will be fast.
-3. Run `codecrafters submit` to submit your solution to CodeCrafters. Test
-   output will be streamed to your terminal.
+Build the executable with Cargo:
+
+```sh
+cargo build --release
+```
+
+## Usage
+
+Run the agent with a single prompt:
+
+```sh
+cargo run --release -- --prompt "Summarize this Rust project"
+```
+
+The short form is also available:
+
+```sh
+cargo run --release -- -p "Add tests for the parser"
+```
+
+The included runner script builds the release executable in Cargo's standard
+`target/release` directory and forwards all arguments to it:
+
+```sh
+./your_program.sh --prompt "Explain src/main.rs"
+```
+
+## Limitations
+
+- The model name is currently fixed at compile time.
+- The agent handles only the first tool call in each model response.
+- There is no interactive approval step, sandbox, path restriction, command
+  timeout, or output-size limit.
+- File reads require UTF-8 text, and file writes replace the complete file.
+- Sessions accept one initial prompt and are not persisted between runs.
+- API and malformed-response errors terminate the process rather than being
+  retried or recovered.
+
+## Attribution
+
+Originally built through the CodeCrafters Build Your Own Claude Code challenge.
