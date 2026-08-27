@@ -1,7 +1,9 @@
 use async_openai::{Client, config::OpenAIConfig};
 use clap::Parser;
 use serde_json::{Value, json};
-use std::{env, process};
+use std::{env, io::Write, process};
+
+const MAX_STEPS: usize = 20;
 
 #[derive(Parser)]
 #[command(author, version, about)]
@@ -29,7 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = Client::with_config(config);
     let mut messages = vec![json!({"role": "user", "content": args.prompt})];
 
-    loop {
+    for _ in 0..MAX_STEPS {
         let response: Value = client
             .chat()
             .create_byot(json!({
@@ -99,22 +101,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         messages.push(message.clone());
 
         if let Some(tool_calls) = message["tool_calls"].as_array() {
-            let tool_call = &tool_calls[0];
-            let tool_call_id = tool_call["id"].as_str().unwrap();
-            let name = tool_call["function"]["name"].as_str().unwrap();
-            let arguments: Value =
-                serde_json::from_str(tool_call["function"]["arguments"].as_str().unwrap())?;
-            let contents = execute_tool_call(name, arguments)?;
+            for tool_call in tool_calls {
+                let tool_call_id = tool_call["id"].as_str().unwrap();
+                let name = tool_call["function"]["name"].as_str().unwrap();
+                let arguments: Value =
+                    serde_json::from_str(tool_call["function"]["arguments"].as_str().unwrap())?;
+                let contents = execute_tool_call(name, arguments)?;
 
-            messages
-                .push(json!({"role": "tool", "tool_call_id": tool_call_id,  "content": contents}));
+                messages.push(
+                    json!({"role": "tool", "tool_call_id": tool_call_id, "content": contents}),
+                );
+            }
         } else if let Some(content) = message["content"].as_str() {
             println!("{}", content);
-            break;
+            return Ok(());
         }
     }
 
-    Ok(())
+    Err(format!("maximum agent step count ({MAX_STEPS}) reached").into())
 }
 
 fn execute_tool_call(name: &str, arguments: Value) -> Result<String, Box<dyn std::error::Error>> {
@@ -127,11 +131,17 @@ fn execute_tool_call(name: &str, arguments: Value) -> Result<String, Box<dyn std
         "Write" => {
             let file_path = arguments["file_path"].as_str().unwrap();
             let content = arguments["content"].as_str().unwrap();
+            if !confirm(&format!("write to {file_path}"))? {
+                return Ok("Write denied by user".to_string());
+            }
             std::fs::write(file_path, content)?;
             Ok(format!("Successfully wrote to {}", file_path))
         }
         "Bash" => {
             let command = arguments["command"].as_str().unwrap();
+            if !confirm(&format!("run `{command}`"))? {
+                return Ok("Bash denied by user".to_string());
+            }
             let output = std::process::Command::new("bash")
                 .arg("-c")
                 .arg(command)
@@ -144,4 +154,16 @@ fn execute_tool_call(name: &str, arguments: Value) -> Result<String, Box<dyn std
         }
         _ => Err(format!("Unknown tool call: {}", name).into()),
     }
+}
+
+fn confirm(action: &str) -> Result<bool, Box<dyn std::error::Error>> {
+    eprint!("Approve {action}? [y/N] ");
+    std::io::stderr().flush()?;
+
+    let mut response = String::new();
+    std::io::stdin().read_line(&mut response)?;
+    Ok(matches!(
+        response.trim().to_lowercase().as_str(),
+        "y" | "yes"
+    ))
 }

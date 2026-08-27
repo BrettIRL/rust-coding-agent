@@ -2,15 +2,15 @@
 
 A small command-line coding agent written in Rust. It sends a prompt to an
 OpenAI-compatible chat completion API and lets the model inspect files, write
-files, and run shell commands until it returns a final response.
+files, and run approved shell commands until it returns a final response or
+reaches the step limit.
 
 ## Warning
 
 This agent can overwrite files and execute arbitrary shell commands with the
-same permissions as the user who runs it. Tool calls are executed immediately,
-without confirmation or sandboxing. Run it only in an environment where you
-are comfortable granting that access, and review or commit important work
-beforehand.
+same permissions as the user who runs it. It asks for confirmation before each
+file write or shell command, but does not sandbox approved operations. Review
+the requested operation carefully and commit important work beforehand.
 
 ## Features
 
@@ -21,7 +21,9 @@ beforehand.
   - `Read` reads a UTF-8 text file.
   - `Write` creates or replaces a file.
   - `Bash` executes a command with `bash -c` and returns stdout and stderr.
-- Continues the model/tool loop until the model produces a text response.
+- Handles every tool call returned in a model response.
+- Asks for confirmation before each `Write` and `Bash` call.
+- Stops after 20 model responses to prevent unbounded loops.
 
 ## Architecture
 
@@ -87,9 +89,7 @@ The included runner script builds the release executable in Cargo's standard
 ## Limitations
 
 - The model name is currently fixed at compile time.
-- The agent handles only the first tool call in each model response.
-- There is no interactive approval step, sandbox, path restriction, command
-  timeout, or output-size limit.
+- There is no sandbox, path restriction, command timeout, or output-size limit.
 - File reads require UTF-8 text, and file writes replace the complete file.
 - Sessions accept one initial prompt and are not persisted between runs.
 - API and malformed-response errors terminate the process rather than being
